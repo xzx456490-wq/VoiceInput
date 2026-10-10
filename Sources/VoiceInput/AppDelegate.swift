@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let keyMonitor = KeyMonitor()
     private let speechEngine = SpeechEngine()
+    private let loginAtLaunch = LoginAtLaunch()
     private let injector = TextInjector()
     private lazy var overlay = OverlayPanel()
     private lazy var settings = SettingsWindow()
@@ -54,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var llmItem: NSMenuItem!
     private var statusMenuItem: NSMenuItem!
     private var copyItem: NSMenuItem!
+    private var loginItem: NSMenuItem!
     private var languageItems: [NSMenuItem] = []
     private var selectedLocale: String {
         get { UserDefaults.standard.string(forKey: "selectedLocaleCode") ?? "zh-CN" }
@@ -66,6 +68,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !supported.contains(selectedLocale) { selectedLocale = "zh-CN" }
         speechEngine.locale = Locale(identifier: selectedLocale)
         setupMenu()
+        // Compile/prepare the native glass before installing the Fn event tap.
+        _ = overlay
+        loginAtLaunch.configureInitialPreference()
         keyMonitor.onFnDown = { [weak self] in self?.fnDown() }
         keyMonitor.onFnUp = { [weak self] in self?.fnUp() }
         speechEngine.onResult = { [weak self] id, text, final in
@@ -205,6 +210,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         llm.submenu = llmMenu; menu.addItem(llm)
         copyItem = add("复制上次识别结果", action: #selector(copyLast), to: menu)
         menu.addItem(.separator())
+        loginItem = add("登录时自动启动", action: #selector(toggleLoginAtLaunch), to: menu)
+        add("登录项设置…", action: #selector(openLoginSettings), to: menu)
         add("使用说明…", action: #selector(showHelp), to: menu)
         add("退出 VoiceInput", action: #selector(quit), to: menu)
         statusItem.menu = menu
@@ -228,6 +235,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         llmItem.state = LLMRefiner.shared.isEnabled ? .on : .off
         statusMenuItem.title = statusMessage
         copyItem.isEnabled = !lastText.isEmpty
+        loginItem.state = loginAtLaunch.isEnabled ? .on : .off
+        loginItem.title = loginAtLaunch.requiresApproval ? "登录时自动启动（待系统允许）" : "登录时自动启动"
         languageItems.forEach { $0.state = ($0.representedObject as? String) == selectedLocale ? .on : .off }
     }
     private func updateIcon() {
@@ -276,6 +285,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !lastText.isEmpty else { return }
         NSPasteboard.general.clearContents(); NSPasteboard.general.setString(lastText, forType: .string)
     }
+    @objc private func toggleLoginAtLaunch() {
+        do {
+            try loginAtLaunch.toggle()
+            if loginAtLaunch.requiresApproval { openLoginSettings() }
+        } catch {
+            alert("自动启动设置未完成", "\(error.localizedDescription)\n\n可在系统设置 → 通用 → 登录项与扩展中检查 VoiceInput。")
+        }
+    }
+    @objc private func openLoginSettings() { LoginAtLaunch.openSettings() }
     @objc private func showHelp() {
         alert("VoiceInput 使用方法", "点进输入框 → 按住 Fn 说话 → 松开输入。处理期间请保持原来的输入位置。\n\n默认识别简体中文，可在菜单切换语言。大模型纠错默认关闭；以后在「大模型纠错 → 设置」填写兼容 OpenAI 的地址（通常以 /v1 结尾）、密钥和模型，再开启纠错。\n\n如果 Fn 仍出现表情窗口，可在系统设置 → 键盘，把「按下 🌐 键以」设为「不执行任何操作」。")
     }

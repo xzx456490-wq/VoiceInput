@@ -84,65 +84,65 @@ vertex SiriVertex siriVertex(uint id [[vertex_id]]) {
 #define fillOpacity (_u.values[40].x)
 #define activeWaves (int(_u.values[41].x))
 
+            
 
-
-
-
-
-
-
-
-
+            
+             
+            
+            
+            
+            
+            
 
             // Dual Texture Background Cross-Fade Uniforms
-
-
-
-
-
-
-
+            
+            
+            
+            
+            
+            
+            
 
             // Snell's Law Liquid Glass Physical Optics Uniforms
-
-
-
-
-
-
-
-
-
-
-
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
 
             // Wave Edge Refraction Uniforms
-
-
-
-
+            
+            
+            
+            
 
             // Physical Bottom Edge Rim Highlight
-
-
+            
+            
 
             // Volumetric Spindle Wave Uniforms
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            
 
             #define PI 3.14159265359
 
@@ -164,7 +164,7 @@ vertex SiriVertex siriVertex(uint id [[vertex_id]]) {
 
                 float px = abs(scaledP.x) / max(dim.x, 0.1);
                 float py = abs(scaledP.y) / max(dim.y, 0.1);
-                float exponent = 2.38;
+                float exponent = 2.38; 
 
                 float dist = pow(pow(px, exponent) + pow(py, exponent), 1.0 / exponent) - 1.0;
                 return dist * min(dim.x, dim.y);
@@ -197,7 +197,7 @@ vertex SiriVertex siriVertex(uint id [[vertex_id]]) {
             float computeSnellDisplacement(float d, float bWidth, float thickness, float nMedium, float curveExp, thread float &outH) {
                 if (d >= bWidth || d <= 0.0) {
                     outH = (d <= 0.0) ? 0.0 : thickness;
-                    return 0.0;
+                    return 0.0; 
                 }
 
                 float u = clamp(d / max(bWidth, 1.0), 0.0, 1.0);
@@ -226,9 +226,11 @@ vertex SiriVertex siriVertex(uint id [[vertex_id]]) {
             fragment float4 siriFragment(SiriVertex in [[stage_in]], constant SiriUniforms &_u [[buffer(0)]], texture2d<float> u_bgTexture [[texture(0)]], texture2d<float> u_bgTextureNext [[texture(1)]]) {
  float2 vUv = in.uv;
                 float2 uv = float2(vUv.x, 1.0 - vUv.y) * u_resolution;
-                float cx = u_resolution.x * 0.5;
-                float cy = u_resolution.y * 0.43;
-                float2 p = uv - float2(cx, cy);
+                float cx = u_resolution.x * 0.5; 
+                float cy = u_resolution.y * 0.43;  
+                float presentationScale = clamp(_u.values[52].x, 0.0, 1.0);
+                if (presentationScale <= 0.0001) return float4(0.0);
+                float2 p = (uv - float2(cx, cy)) / presentationScale;
 
                 float yShiftDown = mix(0.0, (u_shapeParams.y - 11.5) - u_topMorphUp, u_progress);
                 // Desktop glass expands around its center; the phone island anchor is omitted.
@@ -370,3 +372,4 @@ vertex SiriVertex siriVertex(uint id [[vertex_id]]) {
                 float3 finalRGB = glassBody + accumulatedWave + bottomRimHighlight;
                 return float4(clamp(finalRGB, 0.0, 1.0), edgeIsland * _u.values[51].x);
             }
+        

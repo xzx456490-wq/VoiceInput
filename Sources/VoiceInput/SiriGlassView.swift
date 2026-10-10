@@ -48,6 +48,7 @@ final class SiriGlassView: MTKView, MTKViewDelegate {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         motion.step(now - previous, reducedMotion: reduced); previous = now
         if simulatedAudio { setLevel(Float(max(0.04, 0.50 + sin(motion.elapsed * 4.3) * 0.35 + sin(motion.elapsed * 11) * 0.14))) }
+        renderer.presentationScale = Float(motion.presentationScale)
         renderer.progress = Float(motion.progress)
         renderer.intro = Float(motion.intro)
         renderer.energy = Float(motion.energy)

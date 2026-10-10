@@ -51,4 +51,5 @@ enum SiriSlot {
     static let lightGlassCoupling = 49
     static let exitLightScale = 50
     static let opacity = 51
+    static let presentationScale = 52
 }

@@ -1,15 +1,28 @@
 import AVFoundation
 import Speech
+import AudioCapture
+
+// Shared only for the immediate key-up decision while the audio queue is busy.
+final class AudioStartupGate {
+    private let lock = NSLock()
+    private var stopped = false
+    var permitsAudio: Bool { lock.lock(); defer { lock.unlock() }; return !stopped }
+    func stop() { lock.lock(); stopped = true; lock.unlock() }
+}
 
 final class SpeechEngine {
     var onResult: ((UUID, String, Bool) -> Void)?
     var onError: ((UUID, String) -> Void)?
     var onAudioLevel: ((UUID, Float) -> Void)?
-    private let audioEngine = AVAudioEngine()
+    // Audio lifecycle is serialized away from UI rendering. activeID belongs to
+    // the main thread; worker-owned state is only accessed on audioQueue.
+    private let audioQueue = DispatchQueue(label: "VoiceInput.audio.lifecycle", qos: .userInitiated)
+    private var capture: VIAudioInputCapture?
+    private var configurationObserver: NSObjectProtocol?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var activeID: UUID?
-    private var tapInstalled = false
+    private var startupGate: AudioStartupGate?
     var locale = Locale(identifier: "zh-CN")
 
     static var hasPermissions: Bool {
@@ -29,18 +42,29 @@ final class SpeechEngine {
         }
     }
     func startRecording(id: UUID) {
-        cancel()
+        startupGate?.stop()
+        let gate = AudioStartupGate()
+        startupGate = gate
         activeID = id
+        let locale = self.locale
+        audioQueue.async { [weak self] in self?.startAudio(id: id, locale: locale, gate: gate) }
+    }
+    private func deliverError(id: UUID, message: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.activeID == id else { return }
+            self.onError?(id, message)
+        }
+    }
+    private func startAudio(id: UUID, locale: Locale, gate: AudioStartupGate) {
+        cancelAudio()
+        guard gate.permitsAudio else { return }
         guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
-            onError?(id, "当前语言的语音识别暂不可用，请检查网络和系统语言设置。")
+            deliverError(id: id, message: "当前语言的语音识别暂不可用，请检查网络和系统语言设置。")
             return
         }
-        let input = audioEngine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else {
-            onError?(id, "未找到可用的麦克风。")
-            return
-        }
+        // A new engine follows the current hardware after sleep or an input change.
+        let capture = VIAudioInputCapture()
+        self.capture = capture
         let bufferRequest = SFSpeechAudioBufferRecognitionRequest()
         bufferRequest.shouldReportPartialResults = true
         bufferRequest.addsPunctuation = true
@@ -55,7 +79,19 @@ final class SpeechEngine {
                 }
             }
         }
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: capture.engine, queue: nil
+        ) { [weak self, weak capture] _ in
+            self?.audioQueue.async { [weak self, weak capture] in
+                guard let self, let capture, self.capture === capture,
+                      !capture.engine.isRunning else { return }
+                self.cancelAudio()
+                self.deliverError(id: id, message: "麦克风设备已变化，请松开 Fn 后重新按住录音。")
+            }
+        }
+        guard gate.permitsAudio else { stopAudio(); return }
+        do { try capture.start { [weak self] buffer, _ in
+            guard gate.permitsAudio else { return }
             bufferRequest.append(buffer)
             guard let data = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
             var sum: Float = 0
@@ -67,22 +103,38 @@ final class SpeechEngine {
                 self.onAudioLevel?(id, level)
             }
         }
-        tapInstalled = true
-        audioEngine.prepare()
-        do { try audioEngine.start() }
+            if !gate.permitsAudio { stopAudio() }
+        }
         catch {
-            stopRecording()
-            onError?(id, "麦克风启动失败：\(error.localizedDescription)")
+            cancelAudio()
+            deliverError(id: id, message: "麦克风启动失败：\(error.localizedDescription)")
         }
     }
     func stopRecording() {
-        audioEngine.stop()
-        if tapInstalled { audioEngine.inputNode.removeTap(onBus: 0); tapInstalled = false }
+        startupGate?.stop()
+        audioQueue.async { [weak self] in self?.stopAudio() }
+    }
+    private func stopAudio() {
+        if let observer = configurationObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configurationObserver = nil
+        }
+        capture?.stop()
+        capture = nil
         request?.endAudio()
     }
     func cancel() {
         activeID = nil
-        stopRecording()
+        startupGate?.stop(); startupGate = nil
+        audioQueue.async { [weak self] in self?.cancelAudio() }
+    }
+    private func cancelAudio() {
+        stopAudio()
         task?.cancel(); task = nil; request = nil
+    }
+    deinit {
+        if let observer = configurationObserver { NotificationCenter.default.removeObserver(observer) }
+        capture?.stop()
+        task?.cancel()
     }
 }

@@ -1,4 +1,36 @@
 import AppKit
+import AVFoundation
+import Speech
+import ServiceManagement
+import AudioCapture
+
+// Read-only diagnostics bypass normal launch UI and never request permissions.
+if CommandLine.arguments.contains("--verify-input-permissions") {
+    print("microphone=\(AVCaptureDevice.authorizationStatus(for: .audio) == .authorized)")
+    print("speech=\(SFSpeechRecognizer.authorizationStatus() == .authorized)")
+    print("device_control=\(AXIsProcessTrusted())")
+    print("login_item_status=\(SMAppService.mainApp.status.rawValue)")
+    exit(0)
+}
+if CommandLine.arguments.contains("--verify-audio-capture") {
+    guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+        fputs("Microphone permission not granted; diagnostic did not request it.\n", stderr)
+        exit(2)
+    }
+    do {
+        for _ in 0..<10 {
+            let capture = VIAudioInputCapture()
+            try capture.start { _, _ in } // Discard samples; no files or recognition.
+            Thread.sleep(forTimeInterval: 0.15)
+            capture.stop()
+        }
+        print("PASS: 10 real input starts/stops without storing audio")
+        exit(0)
+    } catch {
+        fputs("FAIL: audio capture: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+}
 
 let app = NSApplication.shared
 var performanceCheck: AnyObject?

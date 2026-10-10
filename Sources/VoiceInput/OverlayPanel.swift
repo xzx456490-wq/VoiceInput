@@ -75,8 +75,8 @@ final class OverlayPanel: NSPanel {
         let destination = NSRect(x: area.midX - width / 2, y: area.minY + 56 - padding,
                                  width: width, height: panelHeight)
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        setFrame(destination.offsetBy(dx: 0, dy: reduced ? 0 : -14), display: true)
-        alphaValue = 0
+        setFrame(destination.offsetBy(dx: 0, dy: reduced || appearanceSettings.visualStyle == 1 ? 0 : -14), display: true)
+        alphaValue = appearanceSettings.visualStyle == 1 ? 1 : 0
         orderFrontRegardless()
         // Preserve the established focus/exit lifecycle while the panel stays
         // nonactivating and the original application remains frontmost.
@@ -84,7 +84,7 @@ final class OverlayPanel: NSPanel {
         updateBackdropCapture()
         capsule.startRecording()
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = reduced ? 0 : 0.35
+            ctx.duration = reduced || self.appearanceSettings.visualStyle == 1 ? 0 : 0.35
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.175, 0.885, 0.32, 1)
             animator().alphaValue = 1
             animator().setFrame(destination, display: true)

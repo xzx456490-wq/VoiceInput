@@ -32,6 +32,7 @@ final class SiriMetalRenderer {
     var exitLightScale: Float = 1
     var lightOpacity: Float = 1
     var opacity: Float = 1
+    var presentationScale: Float = 1
 
     init() throws {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
@@ -118,6 +119,7 @@ final class SiriMetalRenderer {
         set(SiriSlot.lightGlassCoupling, lightGlassCoupling)
         set(SiriSlot.exitLightScale, exitLightScale)
         set(SiriSlot.opacity, opacity)
+        set(SiriSlot.presentationScale, min(1, max(0, presentationScale)))
         set(SiriSlot.u_absorption, max(0, glassAmount) * 0.3)
         set(SiriSlot.u_showBackground, reducedTransparency ? 0 : 1 - min(1, max(0, glassAmount)) * 0.55)
         set(SiriSlot.u_scaleRatio, max(0, refractionStrength) / 24 * 3.8)

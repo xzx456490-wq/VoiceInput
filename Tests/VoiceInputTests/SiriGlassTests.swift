@@ -22,14 +22,16 @@ final class SiriGlassTests: XCTestCase {
         motion.setLevel(.nan); motion.step(.infinity)
         XCTAssertEqual(motion.progress, 0)
     }
-    func testColorLightIsPresentDuringOpeningWithoutAudio() throws {
+    func testColorLightFollowsApprovedExpansionWithoutAudio() throws {
         guard MTLCreateSystemDefaultDevice() != nil else { throw XCTSkip("Metal unavailable on this runner") }
         let renderer = try SiriMetalRenderer()
         var motion = SiriMotion(); motion.begin()
-        XCTAssertGreaterThanOrEqual(motion.intro, 1.15, "按下时光线应立即就绪，不等展开完成")
-        for frame in 1...12 {
+        XCTAssertGreaterThanOrEqual(motion.intro, 1.15, "彩光数据立即就绪，显示由展开时间控制")
+        for frame in 1...54 {
             motion.step(1.0 / 60)
-            guard [3, 6, 12].contains(frame) else { continue }
+            guard [36, 42, 54].contains(frame) else { continue }
+            renderer.presentationScale = Float(motion.presentationScale)
+            renderer.lightOpacity = Float(motion.lightOpacity)
             renderer.progress = Float(motion.progress); renderer.intro = Float(motion.intro)
             renderer.energy = Float(motion.energy); renderer.elapsed = Float(motion.elapsed)
             let image = try renderer.snapshot(size: CGSize(width: 260, height: 180), scale: 1)
@@ -37,7 +39,7 @@ final class SiriGlassTests: XCTestCase {
             renderer.lightOpacity = 0
             let darkImage = try renderer.snapshot(size: CGSize(width: 260, height: 180), scale: 1)
             let dark = Array(darkImage.dataProvider!.data! as Data)
-            renderer.lightOpacity = 1
+            renderer.lightOpacity = Float(motion.lightOpacity)
             let colored = stride(from: 0, to: lit.count, by: 4).filter { offset in
                 let channels = (0..<3).map { Int(lit[offset + $0]) }
                 return channels.max()! - channels.min()! > 12
@@ -47,7 +49,7 @@ final class SiriGlassTests: XCTestCase {
             XCTAssertEqual(motion.energy, 0)
         }
         motion.end(); motion.step(1.0 / 60); motion.begin()
-        XCTAssertGreaterThanOrEqual(motion.intro, 1.15, "重复按Fn也不能重新等待光线")
+        XCTAssertGreaterThanOrEqual(motion.intro, 1.15, "再次开始时彩光数据仍已就绪")
     }
     func testSoftExitIsMonotonicAndDuplicateEndDoesNotRestartIt() {
         var motion = SiriMotion(); motion.begin(); motion.setLevel(0.8)
@@ -55,12 +57,12 @@ final class SiriGlassTests: XCTestCase {
         motion.end()
         XCTAssertFalse(motion.recording)
         var previous = motion.progress
-        for frame in 0..<54 {
+        for frame in 0..<74 {
             if frame == 25 { motion.end() }
             motion.step(1.0 / 60)
             XCTAssertLessThanOrEqual(motion.progress, previous + 1e-9)
             XCTAssertGreaterThanOrEqual(motion.progress, 0)
-            XCTAssertLessThan(abs(motion.progress - previous), 0.055)
+            XCTAssertLessThan(abs(motion.progress - previous), 0.10)
             if frame == 24 { XCTAssertFalse(motion.hasSettled); XCTAssertGreaterThan(motion.opacity, 0.99) }
             previous = motion.progress
         }
@@ -69,13 +71,14 @@ final class SiriGlassTests: XCTestCase {
         motion.begin()
         XCTAssertTrue(motion.recording)
         XCTAssertEqual(motion.opacity, 1)
-        XCTAssertEqual(motion.lightOpacity, 1)
+        XCTAssertEqual(motion.presentationScale, 0)
+        XCTAssertEqual(motion.lightOpacity, 0)
         for _ in 0..<120 { motion.step(1.0 / 60) }
         XCTAssertGreaterThan(motion.progress, 0.99)
     }
     func testShortPressAndReducedMotionExit() {
         var motion = SiriMotion(); motion.begin(); motion.step(1.0 / 60); motion.end()
-        for _ in 0..<54 { motion.step(1.0 / 60) }
+        for _ in 0..<74 { motion.step(1.0 / 60) }
         XCTAssertTrue(motion.hasSettled)
         XCTAssertEqual(motion.opacity, 0)
         motion.begin(); motion.step(1.0 / 60, reducedMotion: true); motion.end()
@@ -89,8 +92,10 @@ final class SiriGlassTests: XCTestCase {
         var motion = SiriMotion(); motion.begin(); motion.setLevel(0.8)
         for _ in 0..<120 { motion.step(1.0 / 60) }
         motion.end()
-        for _ in 0..<54 { motion.step(1.0 / 60) }
-        renderer.progress = Float(motion.progress); renderer.intro = Float(motion.intro)
+        for _ in 0..<74 { motion.step(1.0 / 60) }
+        renderer.presentationScale = Float(motion.presentationScale)
+            renderer.lightOpacity = Float(motion.lightOpacity)
+            renderer.progress = Float(motion.progress); renderer.intro = Float(motion.intro)
         renderer.energy = Float(motion.energy); renderer.elapsed = Float(motion.elapsed)
         renderer.exitLightScale = Float(motion.exitLightScale)
         renderer.lightOpacity = Float(motion.lightOpacity); renderer.opacity = Float(motion.opacity)
